@@ -166,11 +166,11 @@ async function doJob(account, progress) {
 
   const { coupons, userInfo } = res.data
 
-  console.log(...coupons)
+  const message = stringifyCoupons(coupons)
+  console.log(`\n领取红包：\n${message || '本次没有可领取的红包'}`)
   console.log(`\n红包已放入账号：${maskNickName(userInfo.nickName)}`)
   console.log(`\n🎉 领取成功！`)
 
-  const message = stringifyCoupons(coupons)
   const pushQueue = sendUserNotify({ message, account, userInfo })
 
   return {

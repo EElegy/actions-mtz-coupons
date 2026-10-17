@@ -1,59 +1,13 @@
 import request from '../request.js'
 import { dateFormat, removePhoneRestriction } from '../util/index.js'
-import { getTemplateData, matchMoudleData } from '../template.js'
 import { ECODE } from './const.js'
+import { actPayloads } from './payloads.js'
 
-function resolveRedMod(text, renderList) {
-  try {
-    for (const instanceId of renderList) {
-      const data = matchMoudleData(
-        text,
-        `gdc-fx-v2-netunion-red-envelope-${instanceId}`,
-        ',directives'
-      )
+const GRAB_URL =
+  'https://mediacps.meituan.com/gundam/gundamGrabV4?gdBs=&yodaReady=h5&csecplatform=4&csecversion=2.4.0'
 
-      if (data) {
-        data.instanceID = instanceId
-
-        return data
-      }
-    }
-  } catch {
-    // ignore
-  }
-
-  return null
-}
-
-async function getPayload({ gundamId, gdId, appJs, renderList }, guard) {
-  const jsText = await request(appJs).then((res) => res.text())
-  const data = resolveRedMod(jsText, renderList)
-
-  if (!data) {
-    throw new Error(`[${gundamId}] Gundam Payload 生成失败`)
-  }
-
-  return {
-    actualLatitude: 0,
-    actualLongitude: 0,
-    ctype: 'h5',
-    app: -1,
-    platform: 3,
-    couponAllConfigIdOrderString: data.expandCouponIds.keys.join(','),
-    couponConfigIdOrderCommaString: data.priorityCouponIds.keys.join(','),
-    // 这里取 number 类型的 gdId
-    gundamId: gdId,
-    instanceId: data.instanceID,
-    h5Fingerprint: guard.h5fp,
-    needTj: data.isStopTJCoupon
-  }
-}
-
-function getActUrl(gundamId) {
-  return new URL(
-    `https://market.waimai.meituan.com/gd/single.html?el_biz=waimai&el_page=gundam.loader&gundam_id=${gundamId}`
-  )
-}
+const WX_UA =
+  'Mozilla/5.0 (Linux; Android 14; 2201122C Build/UKQ1.230917.001; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/116.0.0.0 Mobile Safari/537.36 XWEB/1160027 MMWEBSDK/20231105 MMWEBID/2247 MicroMessenger/8.0.44.2502(0x28002C37) WeChat/arm64 Weixin Android Tablet NetType/WIFI Language/zh_CN ABI/arm64 miniProgram/wxde8ac0a21135c07d'
 
 function formatCoupons(coupons, actName) {
   function extractNumber(text) {
@@ -78,31 +32,24 @@ function formatCoupons(coupons, actName) {
   })
 }
 
-async function grabCoupon(cookie, gundamId, guard) {
-  const actUrl = getActUrl(gundamId)
-  const tmplData = await getTemplateData(cookie, gundamId, guard)
-  const payload = await getPayload(tmplData, guard)
-  const res = await request.post(
-    'https://mediacps.meituan.com/gundam/gundamGrabV4',
-    payload,
-    {
-      cookie,
-      headers: {
-        Origin: actUrl.origin,
-        Referer: actUrl.origin + '/'
-      },
-      signType: 'header',
-      guard
+async function grabCoupon(cookie, act) {
+  const res = await request.post(GRAB_URL, act.payload, {
+    cookie,
+    headers: {
+      'X-Requested-With': 'com.tencent.mm',
+      'User-Agent': WX_UA,
+      Origin: 'https://market.waimai.meituan.com',
+      Referer: 'https://market.waimai.meituan.com/'
     }
-  )
+  })
 
   if (res.code == 0) {
-    return formatCoupons(res.data.coupons, tmplData.actName)
+    return formatCoupons(res.data.coupons, act.name)
   }
 
   const apiInfo = {
     api: 'gundamGrabV4',
-    name: tmplData.actName,
+    name: act.name,
     msg: res.msg || res.message
   }
 
@@ -113,8 +60,4 @@ async function grabCoupon(cookie, gundamId, guard) {
   throw { code: ECODE.API, ...apiInfo }
 }
 
-export default {
-  grabCoupon,
-  getActUrl,
-  getPayload
-}
+export default { grabCoupon, actPayloads }
